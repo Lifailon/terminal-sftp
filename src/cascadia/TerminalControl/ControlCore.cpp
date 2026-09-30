@@ -1745,7 +1745,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void ControlCore::OpenCWD()
     {
         const auto workingDirectory = WorkingDirectory();
-        ShellExecute(nullptr, nullptr, L"explorer", workingDirectory.c_str(), nullptr, SW_SHOW);
+        if (!Utils::IsValidDirectory(workingDirectory.c_str()))
+        {
+            return;
+        }
+        ShellExecute(nullptr, nullptr, workingDirectory.c_str(), nullptr, nullptr, SW_SHOW);
     }
 
     void ControlCore::ClearQuickFix()
@@ -2994,5 +2998,27 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     void ControlCore::PreviewInput(std::wstring_view input)
     {
         _terminal->PreviewText(input);
+    }
+
+    ControlCore::TimerHandle ControlCore::RegisterRenderTimer(const char* name, std::function<void()> callback)
+    {
+        return _renderer->RegisterTimer(name, [cb = std::move(callback)](auto&&, auto&&) {
+            cb();
+        });
+    }
+
+    bool ControlCore::IsRenderTimerRunning(TimerHandle h)
+    {
+        return _renderer->IsTimerRunning(h);
+    }
+
+    void ControlCore::StartRepeatingRenderTimer(TimerHandle h, uint64_t micros)
+    {
+        _renderer->StartRepeatingTimer(h, std::chrono::microseconds(micros));
+    }
+
+    void ControlCore::StopRenderTimer(TimerHandle h)
+    {
+        _renderer->StopTimer(h);
     }
 }
