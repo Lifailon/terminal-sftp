@@ -36,11 +36,9 @@ jobs:
       - name: Bootstrap vcpkg
         shell: pwsh
         run: |
-          git init -q dep/vcpkg
-          git -C dep/vcpkg remote add origin https://github.com/microsoft/vcpkg
-          git -C dep/vcpkg fetch -q --depth 1 origin 927f62e4b8838bd7e441e9c45103a16ffd75007e
-          git -C dep/vcpkg checkout -q FETCH_HEAD
+          git clone -q https://github.com/microsoft/vcpkg dep/vcpkg
           & ./dep/vcpkg/bootstrap-vcpkg.bat -disableMetrics
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\vcpkg-cache" | Out-Null
           "VCPKG_ROOT=$env:GITHUB_WORKSPACE\dep\vcpkg" | Out-File $env:GITHUB_ENV -Append
           "VCPKG_DEFAULT_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-cache" | Out-File $env:GITHUB_ENV -Append
 
@@ -51,24 +49,20 @@ jobs:
       - name: Restore NuGet packages
         shell: pwsh
         run: |
-          $nuget = (Get-Command nuget.exe -ErrorAction SilentlyContinue).Source
-          if (-not $nuget) {
-            dotnet tool install --global NuGet.CommandLine --version 7.0.1
-            $nuget = "$env:USERPROFILE\.dotnet\tools\nuget.exe"
-          }
-          & $nuget restore build/packages.config -PackagesDirectory packages -NonInteractive
-          & $nuget restore dep/nuget/packages.config -PackagesDirectory packages -NonInteractive
+          Invoke-WebRequest https://dist.nuget.org/win-x86-commandline/v7.0.1/nuget.exe -OutFile nuget.exe
+          ./nuget.exe restore build/packages.config -PackagesDirectory packages -NonInteractive
+          ./nuget.exe restore dep/nuget/packages.config -PackagesDirectory packages -NonInteractive
 
       - name: Pin VCToolsVersion
         shell: pwsh
         run: |
-          $o = (./build/scripts/Set-LatestVCToolsVersion.ps1) -join "`n"
-          Write-Host $o
-          if ($o -match 'VCToolsVersion:\s*(\S+)') { "VCToolsVersion=$($Matches[1])" | Out-File $env:GITHUB_ENV -Append }
+          $o = (./build/scripts/Set-LatestVCToolsVersion.ps1 2>$null) -join "`n"
+          $m = [regex]::Match($o, 'Latest VCToolsVersion:\s*(\d[\d.]*)')
+          if ($m.Success) { "VCToolsVersion=$($m.Groups[1].Value)" | Out-File $env:GITHUB_ENV -Append }
 
       - name: Restore solution
         shell: pwsh
-        run: msbuild OpenConsole.slnx -t:Restore -p:Platform=x64 -p:Configuration=Release -m -nologo
+        run: msbuild OpenConsole.slnx -t:Restore -p:Platform=x64 -p:Configuration=Release -p:RestoreAdditionalProjectSources=https://api.nuget.org/v3/index.json -m -nologo
 
       - name: Build
         shell: pwsh
